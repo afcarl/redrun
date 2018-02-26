@@ -156,7 +156,11 @@ def cmd_ps(cmd):
 def cmd_run(cmd):
     arg = get_enumerator(cmd)
     if arg is None: return
-    result = subprocess.check_output(cmd["argv"])
+    try:
+        result = subprocess.check_output(cmd["argv"])
+    except Exception, e:
+        tb = traceback.format_exc()
+        result = "ERROR:\n\n"+tb
     push_result(cmd, result)
 
 def cmd_info(cmd):

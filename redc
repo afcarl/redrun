@@ -23,6 +23,7 @@ parser.add_argument("-E", "--enumerator", default="__enumerate__")
 parser.add_argument("-R", "--results", default="__results__")
 parser.add_argument("-s", "--select", default=None)
 parser.add_argument("-T", "--timeout", type=float, default=5.0)
+parser.add_argument("--enumeration_time", type=float, default=0.0)
 parser.add_argument("-N", "--nwait", type=int, default=1)
 subparser = parser.add_subparsers(dest="command")
 _ = subparser.add_parser("enumerate")
@@ -37,7 +38,8 @@ _.add_argument("local")
 _.add_argument("remote")
 args = parser.parse_args()
 
-rc = redis.StrictRedis(args.redis)
+if args.enumeration_time==0:
+    args.enumeration_time = args.timeout
 
 def print_results(results=None):
     results = results or args.results
@@ -68,7 +70,9 @@ def submit(cmd):
 
 def cmd_enumerate(cmd):
     submit(cmd)
-    print_results()
+    print "waiting for:", args.enumeration_time, "sec"
+    time.sleep(args.enumeration_time)
+    print "number of workers:", rc.get(args.enumerator)
 
 def cmd_info(cmd):
     cmd["select"] = args.select or "all"
@@ -91,6 +95,7 @@ def cmd_upload(cmd):
     with open(args.local, "rb") as stream:
         data = stream.read()
     rc.set("__upload__", data)
+    cmd["select"] = args.select or "all"
     cmd["key"] = "__upload__"
     cmd["file"] = args.remote
     cmd["command"] = "put"
@@ -98,6 +103,9 @@ def cmd_upload(cmd):
     print_results()
 
 if __name__ == "__main__":
+    print "connecting to", args.redis
+    rc = redis.StrictRedis(args.redis)
+    print rc
     f = globals().get("cmd_"+args.command)
     if f is None:
         print "{}: unknown command".format(args.command)
