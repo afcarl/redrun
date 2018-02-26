@@ -32,6 +32,9 @@ _.add_argument("argv", nargs="+")
 _ = subparser.add_parser("start")
 _.add_argument("argv", nargs="+")
 _ = subparser.add_parser("stop")
+_ = subparser.add_parser("upload")
+_.add_argument("local")
+_.add_argument("remote")
 args = parser.parse_args()
 
 rc = redis.StrictRedis(args.redis)
@@ -81,6 +84,16 @@ def cmd_start(cmd):
     print_results()
 
 def cmd_stop(cmd):
+    submit(cmd)
+    print_results()
+
+def cmd_upload(cmd):
+    with open(args.local, "rb") as stream:
+        data = stream.read()
+    rc.set("__upload__", data)
+    cmd["key"] = "__upload__"
+    cmd["file"] = args.remote
+    cmd["command"] = "put"
     submit(cmd)
     print_results()
 
