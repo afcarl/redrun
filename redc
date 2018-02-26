@@ -1,0 +1,98 @@
+#!/usr/bin/python
+
+import argparse
+import logging
+import os
+import re
+import shlex
+import socket
+import subprocess
+import sys
+import time
+import traceback
+import msgpack
+import redis
+import simplejson
+
+parser = argparse.ArgumentParser()
+parser.add_argument("-v", "--verbose", action="store_true")
+parser.add_argument("-r", "--redis", default="redis")
+parser.add_argument("-c", "--channel", default="rdcontrol")
+parser.add_argument("-l", "--log", default="__log__")
+parser.add_argument("-E", "--enumerator", default="__enumerate__")
+parser.add_argument("-R", "--results", default="__results__")
+parser.add_argument("-s", "--select", default=None)
+parser.add_argument("-T", "--timeout", type=float, default=5.0)
+parser.add_argument("-N", "--nwait", type=int, default=1)
+subparser = parser.add_subparsers(dest="command")
+_ = subparser.add_parser("enumerate")
+_ = subparser.add_parser("info")
+_ = subparser.add_parser("run")
+_.add_argument("argv", nargs="+")
+_ = subparser.add_parser("start")
+_.add_argument("argv", nargs="+")
+_ = subparser.add_parser("stop")
+args = parser.parse_args()
+
+rc = redis.StrictRedis(args.redis)
+
+def print_results(results=None):
+    results = results or args.results
+    start = time.time()
+    while rc.llen(args.results) == 0: 
+        if time.time() - start > args.timeout:
+            print "(no results in {}s)".format(args.timeout)
+            return
+        time.sleep(0.01)
+    start = time.time()
+    for i in xrange(args.nwait):
+        result = rc.lpop(args.results)
+        if result is not None:
+            print simplejson.loads(result)
+            start = time.time()
+            continue
+        if time.time() - start > args.timeout:
+            return
+        time.sleep(0.1)
+
+def submit(cmd):
+    rc.delete(args.results)
+    rc.delete(args.enumerator)
+    message = simplejson.dumps(cmd, indent=4)
+    if args.verbose:
+        print message
+    rc.publish(args.channel, message)
+
+def cmd_enumerate(cmd):
+    submit(cmd)
+    print_results()
+
+def cmd_info(cmd):
+    cmd["select"] = args.select or "all"
+    submit(cmd)
+    print_results()
+
+def cmd_run(cmd):
+    submit(cmd)
+    print_results()
+
+def cmd_start(cmd):
+    submit(cmd)
+    print_results()
+
+def cmd_stop(cmd):
+    submit(cmd)
+    print_results()
+
+if __name__ == "__main__":
+    f = globals().get("cmd_"+args.command)
+    if f is None:
+        print "{}: unknown command".format(args.command)
+        sys.exit(1)
+    cmd = dict(command=args.command,
+               results=args.results,
+               select=args.select or "idle",
+               enumerator=args.enumerator)
+    if "argv" in dir(args):
+        cmd["argv"] = args.argv
+    f(cmd)

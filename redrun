@@ -1,0 +1,190 @@
+#!/usr/bin/python
+
+import os
+import re
+import sys
+import time
+import msgpack
+import htpar
+import zmq
+import redis
+import traceback
+import logging
+import rlog
+import socket
+import subprocess
+import simplejson
+from random import randint
+import shlex
+import argparse
+
+parser = argparse.ArgumentParser()
+parser.add_argument("-n", "--n", type=int, default=1)
+parser.add_argument("-r", "--redis", default="redis")
+parser.add_argument("-c", "--channel", default="rdcontrol")
+parser.add_argument("-l", "--log", default="__log__")
+parser.add_argument("-d", "--dir", default=".")
+args = parser.parse_args()
+
+os.chdir(args.dir)
+
+rc = redis.StrictRedis(os.environ.get("REDIS", args.redis))
+
+logger = logging.getLogger()
+logger.addHandler(rlog.RedisHandler(channel=args.log, redis_client=rc))
+logger.addHandler(logging.StreamHandler())
+logger.setLevel(logging.INFO)
+
+myaddr = os.environ.get("MY_POD_IP") or socket.gethostbyname(socket.getfqdn())
+os.environ["MY_POD_IP"] = myaddr
+
+myindex = None
+myprocess = None
+
+ps = rc.pubsub()
+ps.subscribe(os.environ.get("RDCONTROL", args.channel))
+
+def selected(cmd):
+    """Check whether the current process is selected by the command."""
+    select = cmd.get("select", "idle")
+    if select == "all":
+        return True
+    match = re.search("^(\d+)-(\d+)$", select)
+    if match:
+        lo = int(match.group(1))
+        hi = int(match.group(2))
+        return myindex >= lo and myindex < hi
+    # default is "idle"
+    if select is "busy":
+        return myprocess is not None
+    else:
+        return myprocess is None
+
+def push_result(cmd, *args, **kw):
+    """Push results on the result variable specified in the command."""
+    kw["__myaddr__"] = myaddr
+    if len(args) > 0: kw["result"] = args
+    key = cmd.get("results", "__results__")
+    if key is not None:
+        rc.rpush(key, simplejson.dumps(kw))
+
+def cmd_cd(cmd):
+    os.chdir(args.dir)
+    push_result(cmd, myaddr)
+
+def cmd_enumerate(cmd):
+    global myindex
+    myindex = None
+    if "INDEX" in os.environ: del os.environ["INDEX"]
+    myindex = int(rc.incr(cmd["enumerator"])) - 1
+    os.environ["INDEX"] = str(myindex)
+    push_result(cmd, [myindex, myindex])
+
+def cmd_put(cmd):
+    data = rc.get(cmd["key"])
+    with open(cmd["file"], "wb") as stream:
+        stream.write(data)
+    push_result(cmd, len(data))
+
+def cmd_get(cmd):
+    with open(cmd["file"], "rb") as stream:
+        data = stream.read()
+    rc.set(cmd["key"], data)
+    push_result(cmd, len(data))
+
+def cmd_getq(cmd):
+    with open(cmd["file"], "rb") as stream:
+        data = stream.read()
+    rc.rpush(cmd["key"], data)
+    push_result(cmd, len(data))
+
+def get_enumerator(cmd):
+    if cmd.get("enumerate", None):
+        key, n = cmd.get("enumerate")
+        arg = int(rc.incr(key))
+        if arg >= n:
+            rc.decr(key)
+            return None
+        return arg
+    elif cmd.get("foreach", None):
+        arg = cmd.lpop("foreach")
+        if arg is None:
+            return
+        return arg
+    return myaddr
+
+def cmd_start(cmd):
+    global myprocess
+    arg = get_enumerator(cmd)
+    if arg is None: return
+    stdout = cmd.get("stdout")
+    stdout = open(stdout, "wb") if stdout else None
+    stderr = cmd.get("stderr", "-")
+    if stderr == "-" or stdout == stderr:
+        stderr = subprocess.STDOUT
+    else:
+        stderr = open(stderr, "wb") if stderr else None
+    stdin = cmd.get("stdin", None)
+    stdin = open(stdin, "rb") if stdin else None
+    argv = cmd["argv"]
+    argv = [x if x != "{}" else arg for x in argv]
+    myprocess = subprocess.Popen(argv,
+                                 stdout=stdout,
+                                 stderr=stderr,
+                                 stdin=stdin)
+    myprocess.the_argv = argv
+    results = cmd.get("results", "__results__")
+    push_result(cmd, myaddr)
+
+def cmd_stop(cmd):
+    global myprocess
+    state = str(myprocess)
+    if myprocess is None: return
+    try: myprocess.send_signal(1)
+    except: pass
+    time.sleep(1.0)
+    try: myprocess.send_signal(9)
+    except: pass
+    del myprocess
+    myprocess = None
+    push_result(cmd, state)
+
+def cmd_ps(cmd):
+    if myprocess and myprocess.returncode is not None:
+        push_result(cmd, [myaddr, str(myprocess)])
+
+def cmd_run(cmd):
+    arg = get_enumerator(cmd)
+    if arg is None: return
+    result = subprocess.check_output(cmd["argv"])
+    push_result(cmd, result)
+
+def cmd_info(cmd):
+    argv = myprocess and myprocess.the_argv
+    info = "{}[{}]: {} {}".format(myaddr, myindex, repr(myprocess), argv)
+    push_result(cmd, info)
+
+logger.info("started")
+
+while True:
+    try:
+        message = ps.get_message()
+        myprocess and myprocess.poll()
+        if not message:
+            time.sleep(0.01)
+            continue
+        if message.get("type") != "message":
+            continue
+        cmd = message.get("data", "")
+        cmd = simplejson.loads(cmd)
+        f = globals().get("cmd_"+cmd["command"])
+        if f is None:
+            logger.error("{}: unknown command".format(cmd["command"]))
+            continue
+        logger.info(str(cmd))
+        if not selected(cmd):
+            continue
+        f(cmd)
+    except Exception, e:
+        tb = traceback.format_exc()
+        logger.error("Exception:\n{}".format(tb))
