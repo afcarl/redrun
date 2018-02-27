@@ -125,8 +125,11 @@ def cmd_stop(cmd):
     print_results()
 
 def cmd_upload(cmd):
-    with open(args.local, "rb") as stream:
-        data = stream.read()
+    if args.local == "-":
+        data = sys.stdin.read()
+    else:
+        with open(args.local, "rb") as stream:
+            data = stream.read()
     rc.set("__upload__", data)
     cmd["select"] = args.select or "all"
     cmd["key"] = "__upload__"
