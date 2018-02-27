@@ -145,7 +145,6 @@ def cmd_stop(cmd):
     time.sleep(1.0)
     try: myprocess.send_signal(9)
     except: pass
-    del myprocess
     myprocess = None
     push_result(cmd, state)
 
