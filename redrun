@@ -167,7 +167,10 @@ def cmd_run(cmd):
 
 def cmd_info(cmd):
     argv = myprocess and myprocess.the_argv
-    info = "{}[{}]: {} {}".format(myaddr, myindex, repr(myprocess), argv)
+    info = "{}[{}]: {} {} {}".format(
+        myaddr, myindex,
+        repr(myprocess), (myprocess and myprocess.returnvalue),
+        argv)
     push_result(cmd, info)
 
 logger.info("started")

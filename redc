@@ -40,12 +40,38 @@ _ = subparser.add_parser("stop")
 _ = subparser.add_parser("upload")
 _.add_argument("local")
 _.add_argument("remote")
+_ = subparser.add_parser("setlist")
+_.add_argument("list")
+_ = subparser.add_parser("setshards")
+_.add_argument("list")
+_.add_argument("shards")
+_ = subparser.add_parser("waitempty")
+_.add_argument("list")
 args = parser.parse_args()
 
 if args.enumeration_time==0:
     args.enumeration_time = args.timeout
 
 formatter = None
+
+def split_sharded_path(path):
+    """Split a path containing shard notation into prefix, format, suffix, and number."""
+    match = re.search(r"^(.*)@([0-9]+)(.*)", path)
+    if not match:
+        return path, None
+    prefix = match.group(1)
+    num = int(match.group(2))
+    suffix = match.group(3)
+    fmt = "%%0%dd" % len(match.group(2))
+    return prefix+fmt+suffix, num
+
+def path_shards(path):
+    fmt, n = split_sharded_path(path)
+    if n is None:
+        yield fmt
+    else:
+        for i in range(n):
+            yield (fmt % i)
 
 def fmt_result(result):
     s = result.get("result")
@@ -123,6 +149,21 @@ def cmd_start(cmd):
 def cmd_stop(cmd):
     submit(cmd)
     print_results()
+
+def cmd_setlist(cmd):
+    rc.delete(args.list)
+    for line in xreadlines(sys.stdin):
+        rc.rpush(args.list, line[:-1])
+
+def cmd_setshards(cmd):
+    rc.delete(args.list)
+    shards = path_shards(args.shards)
+    for shard in shards:
+        rc.rpush(args.list, shard)
+
+def cmd_waitempty(cmd)
+    while rc.llen(args.list) > 0:
+        time.sleep(0.1)
 
 def cmd_upload(cmd):
     if args.local == "-":
