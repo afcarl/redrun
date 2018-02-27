@@ -53,7 +53,7 @@ _.add_argument("count", type=int)
 _ = subparser.add_parser("waitlen")
 _.add_argument("list")
 _.add_argument("count", type=int)
-_ = subparser.add_parser("outputs")
+_ = subparser.add_parser("list")
 _.add_argument("list", default="outputs", nargs="?")
 args = parser.parse_args()
 
@@ -196,7 +196,7 @@ def cmd_waitlen(cmd):
         time.sleep(0.5)
     sys.stdout.write("\n")
 
-def cmd_outputs(cmd):
+def cmd_list(cmd):
     outputs = rc.lrange(args.list, 0, -1)
     for output in outputs:
         print output.strip()
