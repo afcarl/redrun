@@ -19,6 +19,7 @@ parser.add_argument("-v", "--verbose", action="store_true")
 parser.add_argument("-r", "--redis", default="redis")
 parser.add_argument("-c", "--channel", default="rdcontrol")
 parser.add_argument("-l", "--log", default="__log__")
+parser.add_argument("-A", "--noautoenumerate", action="store_true")
 parser.add_argument("-e", "--enumerate", type=int, default=-1)
 parser.add_argument("-f", "--foreach", action="store_true")
 parser.add_argument("-E", "--enumerator", default="__enumerate__")
@@ -26,7 +27,7 @@ parser.add_argument("-R", "--results", default="__results__")
 parser.add_argument("-s", "--select", default=None)
 parser.add_argument("-T", "--timeout", type=float, default=5.0)
 parser.add_argument("--enumeration_time", type=float, default=0.0)
-parser.add_argument("-N", "--nwait", type=int, default=1)
+parser.add_argument("-N", "--nwait", type=int, default=-1)
 parser.add_argument("-F", "--formatter", default=None)
 subparser = parser.add_subparsers(dest="command")
 _ = subparser.add_parser("enumerate")
@@ -62,7 +63,11 @@ def print_results(results=None):
             return
         time.sleep(0.01)
     start = time.time()
-    for i in xrange(args.nwait):
+    if args.nwait < 0:
+        nwait = int(rc.get(args.enumerator))
+    else:
+        nwait = args.nwait
+    for i in xrange(nwait):
         result = rc.lpop(args.results)
         if result is None:
             if time.time() - start > args.timeout:
@@ -74,13 +79,25 @@ def print_results(results=None):
 
 def submit(cmd):
     rc.delete(args.results)
-    rc.delete(args.enumerator)
     message = simplejson.dumps(cmd, indent=4)
     if args.verbose:
         print message
     rc.publish(args.channel, message)
 
+def auto_enumerate():
+    if rc.get(args.enumerator) is not None:
+        return
+    cmd = dict(command="enumerate",
+               results=args.results,
+               select="all",
+               enumerator=args.enumerator)
+    print "auto enumerating for:", args.enumeration_time, "sec"
+    submit(cmd)
+    time.sleep(args.enumeration_time)
+    print "number of workers:", rc.get(args.enumerator)
+
 def cmd_enumerate(cmd):
+    rc.delete(args.enumerator)
     submit(cmd)
     print "waiting for:", args.enumeration_time, "sec"
     time.sleep(args.enumeration_time)
@@ -121,7 +138,7 @@ def cmd_upload(cmd):
 if __name__ == "__main__":
     print "connecting to", args.redis
     rc = redis.StrictRedis(args.redis)
-    print rc
+    auto_enumerate()
     f = globals().get("cmd_"+args.command)
     if f is None:
         print "{}: unknown command".format(args.command)
@@ -133,7 +150,7 @@ if __name__ == "__main__":
     if args.foreach:
         cmd["foreach"] = [x.strip() for x in sys.stdin.readlines()]
     elif args.enumerate > 0:
-        cmd["enumerate"] = args.enumerate
+        cmd["enumerate"] = ["__temp__", args.enumerate]
     if "argv" in dir(args):
         cmd["argv"] = args.argv
     formatter = globals().get("fmt_"+str(args.formatter)) or repr
