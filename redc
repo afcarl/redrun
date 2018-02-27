@@ -216,7 +216,6 @@ def cmd_upload(cmd):
     print_results()
 
 if __name__ == "__main__":
-    print "connecting to", args.redis
     rc = redis.StrictRedis(args.redis)
     auto_enumerate()
     f = globals().get("cmd_"+args.command)
