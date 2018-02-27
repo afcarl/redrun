@@ -178,7 +178,11 @@ logger.info("started")
 while True:
     try:
         message = ps.get_message()
-        myprocess and myprocess.poll()
+        if myprocess:
+            myprocess.poll()
+            if myprocess.returnvalue is not None:
+                del myprocess
+            continue
         if not message:
             time.sleep(0.01)
             continue
