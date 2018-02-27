@@ -169,7 +169,7 @@ def cmd_info(cmd):
     argv = myprocess and myprocess.the_argv
     info = "{}[{}]: {} {} {}".format(
         myaddr, myindex,
-        repr(myprocess), (myprocess and myprocess.returnvalue),
+        repr(myprocess), (myprocess and myprocess.returncode),
         argv)
     push_result(cmd, info)
 
@@ -180,7 +180,7 @@ while True:
         message = ps.get_message()
         if myprocess:
             myprocess.poll()
-            if myprocess.returnvalue is not None:
+            if myprocess.returncode is not None:
                 del myprocess
             continue
         if not message:
