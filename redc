@@ -41,7 +41,7 @@ _ = subparser.add_parser("upload")
 _.add_argument("local")
 _.add_argument("remote")
 _ = subparser.add_parser("setlist")
-_.add_argument("list")
+_.add_argument("list", default="inputs", nargs="?")
 _ = subparser.add_parser("setshards")
 _.add_argument("list")
 _.add_argument("shards")
@@ -160,14 +160,18 @@ def cmd_stop(cmd):
 
 def cmd_setlist(cmd):
     rc.delete(args.list)
-    for line in xreadlines(sys.stdin):
-        rc.rpush(args.list, line[:-1])
+    pl = rc.pipeline()
+    for line in sys.stdin.readlines():
+        pl.rpush(args.list, line[:-1])
+    pl.execute()
 
 def cmd_setshards(cmd):
     rc.delete(args.list)
     shards = path_shards(args.shards)
+    pl = rc.pipeline()
     for shard in shards:
-        rc.rpush(args.list, shard)
+        pl.rpush(args.list, shard)
+    pl.execute()
 
 def cmd_waitempty(cmd):
     while 1:
