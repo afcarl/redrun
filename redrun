@@ -118,12 +118,12 @@ def cmd_start(cmd):
     arg = get_enumerator(cmd)
     if arg is None: return
     stdout = cmd.get("stdout")
-    stdout = open(stdout, "wb") if stdout else None
+    stdout = open(stdout, "wb") if stdout else sys.stdout
     stderr = cmd.get("stderr", "-")
     if stderr == "-" or stdout == stderr:
         stderr = subprocess.STDOUT
     else:
-        stderr = open(stderr, "wb") if stderr else None
+        stderr = open(stderr, "wb") if stderr else sys.stderr
     stdin = cmd.get("stdin", None)
     stdin = open(stdin, "rb") if stdin else None
     argv = cmd["argv"]
