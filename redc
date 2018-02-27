@@ -161,7 +161,7 @@ def cmd_setshards(cmd):
     for shard in shards:
         rc.rpush(args.list, shard)
 
-def cmd_waitempty(cmd)
+def cmd_waitempty(cmd):
     while rc.llen(args.list) > 0:
         time.sleep(0.1)
 
