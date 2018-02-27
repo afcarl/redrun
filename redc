@@ -19,12 +19,15 @@ parser.add_argument("-v", "--verbose", action="store_true")
 parser.add_argument("-r", "--redis", default="redis")
 parser.add_argument("-c", "--channel", default="rdcontrol")
 parser.add_argument("-l", "--log", default="__log__")
+parser.add_argument("-e", "--enumerate", type=int, default=-1)
+parser.add_argument("-f", "--foreach", action="store_true")
 parser.add_argument("-E", "--enumerator", default="__enumerate__")
 parser.add_argument("-R", "--results", default="__results__")
 parser.add_argument("-s", "--select", default=None)
 parser.add_argument("-T", "--timeout", type=float, default=5.0)
 parser.add_argument("--enumeration_time", type=float, default=0.0)
 parser.add_argument("-N", "--nwait", type=int, default=1)
+parser.add_argument("-F", "--formatter", default=None)
 subparser = parser.add_subparsers(dest="command")
 _ = subparser.add_parser("enumerate")
 _ = subparser.add_parser("info")
@@ -41,6 +44,15 @@ args = parser.parse_args()
 if args.enumeration_time==0:
     args.enumeration_time = args.timeout
 
+formatter = None
+
+def fmt_result(result):
+    s = result.get("result")
+    if isinstance(s, list):
+        s = " ".join([str(x) for x in s])
+    s = s.strip()
+    return "{}\t{}".format(result.get("__myaddr__"), s)
+
 def print_results(results=None):
     results = results or args.results
     start = time.time()
@@ -52,13 +64,13 @@ def print_results(results=None):
     start = time.time()
     for i in xrange(args.nwait):
         result = rc.lpop(args.results)
-        if result is not None:
-            print simplejson.loads(result)
-            start = time.time()
+        if result is None:
+            if time.time() - start > args.timeout:
+                return
+            time.sleep(0.1)
             continue
-        if time.time() - start > args.timeout:
-            return
-        time.sleep(0.1)
+        print formatter(simplejson.loads(result))
+        start = time.time()
 
 def submit(cmd):
     rc.delete(args.results)
@@ -75,11 +87,15 @@ def cmd_enumerate(cmd):
     print "number of workers:", rc.get(args.enumerator)
 
 def cmd_info(cmd):
+    global formatter
+    formatter = globals().get("fmt_"+str(args.formatter)) or fmt_result
     cmd["select"] = args.select or "all"
     submit(cmd)
     print_results()
 
 def cmd_run(cmd):
+    global formatter
+    formatter = globals().get("fmt_"+str(args.formatter)) or fmt_result
     submit(cmd)
     print_results()
 
@@ -114,6 +130,11 @@ if __name__ == "__main__":
                results=args.results,
                select=args.select or "idle",
                enumerator=args.enumerator)
+    if args.foreach:
+        cmd["foreach"] = [x.strip() for x in sys.stdin.readlines()]
+    elif args.enumerate > 0:
+        cmd["enumerate"] = args.enumerate
     if "argv" in dir(args):
         cmd["argv"] = args.argv
+    formatter = globals().get("fmt_"+str(args.formatter)) or repr
     f(cmd)

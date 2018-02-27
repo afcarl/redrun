@@ -99,8 +99,8 @@ def cmd_getq(cmd):
     push_result(cmd, len(data))
 
 def get_enumerator(cmd):
-    if cmd.get("enumerate", None):
-        key, n = cmd.get("enumerate")
+    if cmd.get("enumerate") is not None:
+        key, n = int(cmd.get("enumerate"))
         arg = int(rc.incr(key))
         if arg >= n:
             rc.decr(key)
@@ -157,7 +157,9 @@ def cmd_run(cmd):
     arg = get_enumerator(cmd)
     if arg is None: return
     try:
-        result = subprocess.check_output(cmd["argv"])
+        argv = cmd["argv"]
+        argv = [x if x != "{}" else arg for x in argv]
+        result = subprocess.check_output(argv)
     except Exception, e:
         tb = traceback.format_exc()
         result = "ERROR:\n\n"+tb
