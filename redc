@@ -27,7 +27,7 @@ parser.add_argument("-R", "--results", default="__results__")
 parser.add_argument("-s", "--select", default=None)
 parser.add_argument("-T", "--timeout", type=float, default=5.0)
 parser.add_argument("--enumeration_time", type=float, default=0.0)
-parser.add_argument("-N", "--nwait", type=int, default=-1)
+parser.add_argument("-N", "--nwait", type=int, default=-3)
 parser.add_argument("-F", "--formatter", default=None)
 subparser = parser.add_subparsers(dest="command")
 _ = subparser.add_parser("enumerate")
@@ -53,6 +53,8 @@ _.add_argument("count", type=int)
 _ = subparser.add_parser("waitlen")
 _.add_argument("list")
 _.add_argument("count", type=int)
+_ = subparser.add_parser("outputs")
+_.add_argument("list", default="outputs", nargs="?")
 args = parser.parse_args()
 
 if args.enumeration_time==0:
@@ -96,7 +98,7 @@ def print_results(results=None):
         time.sleep(0.01)
     start = time.time()
     if args.nwait < 0:
-        nwait = int(rc.get(args.enumerator))
+        nwait = min(abs(args.nwait), int(rc.get(args.enumerator)))
     else:
         nwait = args.nwait
     for i in xrange(nwait):
@@ -193,6 +195,11 @@ def cmd_waitlen(cmd):
         if n>=args.count: break
         time.sleep(0.5)
     sys.stdout.write("\n")
+
+def cmd_outputs(cmd):
+    outputs = rc.lrange(args.list, 0, -1)
+    for output in outputs:
+        print output.strip()
 
 def cmd_upload(cmd):
     if args.local == "-":

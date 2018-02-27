@@ -128,6 +128,7 @@ def cmd_start(cmd):
     stdin = open(stdin, "rb") if stdin else None
     argv = cmd["argv"]
     argv = [x if x != "{}" else arg for x in argv]
+    logger.info("starting {} {} {} {}".format(argv, stdout, stderr, stdin))
     myprocess = subprocess.Popen(argv,
                                  stdout=stdout,
                                  stderr=stderr,
